@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 import re
@@ -9,6 +10,7 @@ from openspace.skill_engine.skill_utils import parse_frontmatter
 
 from .contracts import ArtifactContract, infer_contract
 from .drafts import build_draft_filename
+from .fact_review import collect_project_facts, review_artifact_with_project_facts
 from .types import ClaudeArtifact, ClaudeArtifactType
 
 
@@ -17,6 +19,8 @@ class ArtifactFinding:
     code: str
     severity: str
     message: str
+    source: str = "contract"
+    evidence: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -43,6 +47,7 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
     content = artifact.path.read_text(encoding="utf-8")
     contract = infer_contract(artifact)
     findings: List[ArtifactFinding] = []
+    project_facts = _get_project_facts(str(artifact.workspace_root))
 
     if _expects_frontmatter(artifact) and not content.startswith("---"):
         findings.append(
@@ -50,6 +55,7 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
                 code="missing_frontmatter",
                 severity="high",
                 message="文件缺少 YAML frontmatter，无法稳定承接结构化路由和演化判断。",
+                source="contract",
             )
         )
 
@@ -57,12 +63,13 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
         fm = parse_frontmatter(content)
         if not fm:
             findings.append(
-                ArtifactFinding(
-                    code="malformed_frontmatter",
-                    severity="high",
-                    message="frontmatter 看起来存在，但无法稳定解析，建议收紧为简单键值结构。",
-                )
+            ArtifactFinding(
+                code="malformed_frontmatter",
+                severity="high",
+                message="frontmatter 看起来存在，但无法稳定解析，建议收紧为简单键值结构。",
+                source="contract",
             )
+        )
 
     for term in contract.required_terms:
         if term not in content:
@@ -71,6 +78,7 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
                     code=f"missing_term:{term}",
                     severity="medium",
                     message=f"缺少关键契约词 `{term}`，可能导致生成物无法承接上下游命令或知识流转。",
+                    source="contract",
                 )
             )
 
@@ -81,6 +89,7 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
                     code=f"missing_heading:{heading}",
                     severity="high",
                     message=f"缺少模板/知识卡片必需结构 `{heading}`。",
+                    source="contract",
                 )
             )
 
@@ -99,6 +108,21 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
     elif artifact.artifact_type == ClaudeArtifactType.CLAUDE_MEMORY:
         _check_memory_contract(artifact.path.name.lower(), content, findings)
 
+    findings.extend(
+        ArtifactFinding(
+            code=item.code,
+            severity=item.severity,
+            message=item.message,
+            source="code_evidence",
+            evidence=item.evidence,
+        )
+        for item in review_artifact_with_project_facts(
+            artifact,
+            content=content,
+            facts=project_facts,
+        )
+    )
+
     summary = "未发现硬规则漂移。" if not findings else f"发现 {len(findings)} 项需要关注的契约问题。"
     return ArtifactEvaluation(
         artifact=artifact,
@@ -111,7 +135,7 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
 def render_evaluation_draft(evaluation: ArtifactEvaluation) -> str:
     artifact = evaluation.artifact
     findings = "\n".join(
-        f"- [{finding.severity}] `{finding.code}`: {finding.message}"
+        _render_finding(finding)
         for finding in evaluation.findings
     ) or "- 无"
     producers = "\n".join(f"- {item}" for item in evaluation.contract.producers) or "- 无"
@@ -133,6 +157,19 @@ def render_evaluation_draft(evaluation: ArtifactEvaluation) -> str:
     )
 
 
+def _render_finding(finding: ArtifactFinding) -> str:
+    line = f"- [{finding.severity}] [{finding.source}] `{finding.code}`: {finding.message}"
+    if finding.evidence:
+        evidence = "; ".join(finding.evidence[:4])
+        line += f" 证据: {evidence}"
+    return line
+
+
+@lru_cache(maxsize=16)
+def _get_project_facts(workspace_root: str):
+    return collect_project_facts(Path(workspace_root))
+
+
 def _expects_frontmatter(artifact: ClaudeArtifact) -> bool:
     return artifact.artifact_type in {
         ClaudeArtifactType.COMMAND_WORKFLOW,
@@ -151,6 +188,7 @@ def _check_command_alias(content: str, findings: List[ArtifactFinding]) -> None:
                 code="alias_contract_weak",
                 severity="medium",
                 message="别名命令缺少明确的 alias 说明，后续自动识别正式命令时会不稳定。",
+                source="contract",
             )
         )
 
@@ -167,6 +205,7 @@ def _check_command_workflow(name: str, content: str, findings: List[ArtifactFind
                 code="missing_next_step_contract",
                 severity="medium",
                 message="命令缺少清晰的下一步承接提示，容易造成流程断裂。",
+                source="contract",
             )
         )
 
@@ -176,6 +215,7 @@ def _check_command_workflow(name: str, content: str, findings: List[ArtifactFind
                 code="missing_validation_context_binding",
                 severity="high",
                 message="`/vald` 没有显式绑定 `validation-context.md`，容易脱离项目真实验证现实。",
+                source="contract",
             )
         )
 
@@ -186,6 +226,7 @@ def _check_command_workflow(name: str, content: str, findings: List[ArtifactFind
                     code="missing_knowledge_template_binding",
                     severity="high",
                     message="涉及长期知识生成/升级的命令未显式绑定 `_knowledge-template.md`。",
+                    source="contract",
                 )
             )
 
@@ -195,6 +236,7 @@ def _check_command_workflow(name: str, content: str, findings: List[ArtifactFind
                 code="missing_knowledge_index_binding",
                 severity="high",
                 message="`/prim` 缺少对 `knowledge-index.md` 的显式依赖，知识路由会漂移。",
+                source="contract",
             )
         )
 
@@ -214,6 +256,7 @@ def _check_template_contract(name: str, content: str, findings: List[ArtifactFin
                     code="missing_db_validation_contract",
                     severity="high",
                     message="验证上下文模板没有完整承接数据库协作验证契约。",
+                    source="contract",
                 )
             )
 
@@ -223,6 +266,7 @@ def _check_template_contract(name: str, content: str, findings: List[ArtifactFin
                 code="missing_feedback_link",
                 severity="high",
                 message="知识索引模板没有显式承接 knowledge-feedback，后续闭环会断。",
+                source="contract",
             )
         )
 
@@ -244,6 +288,7 @@ def _check_reference_index(content: str, findings: List[ArtifactFinding]) -> Non
                 code="missing_feedback_link",
                 severity="medium",
                 message="knowledge-index 没有显式提到 knowledge-feedback，索引调优闭环不够清晰。",
+                source="contract",
             )
         )
 
@@ -252,6 +297,7 @@ def _check_reference_index(content: str, findings: List[ArtifactFinding]) -> Non
             code="missing_card_reading_rules",
             severity="medium",
             message="knowledge-index 缺少卡片读取规则，命中后的使用方式不够稳定。",
+            source="contract",
         )
     )
 
@@ -267,13 +313,14 @@ def _check_reference_feedback(content: str, findings: List[ArtifactFinding]) -> 
     ):
         return
 
-        findings.append(
-            ArtifactFinding(
-                code="missing_feedback_template",
-                severity="medium",
-                message="knowledge-feedback 缺少统一记录模板，反馈字段容易漂移。",
-            )
+    findings.append(
+        ArtifactFinding(
+            code="missing_feedback_template",
+            severity="medium",
+            message="knowledge-feedback 缺少统一记录模板，反馈字段容易漂移。",
+            source="contract",
         )
+    )
 
 
 def _check_reference_card(content: str, findings: List[ArtifactFinding]) -> None:
@@ -307,6 +354,7 @@ def _check_reference_card(content: str, findings: List[ArtifactFinding]) -> None
             code="reference_card_structure_weak",
             severity="medium",
             message="知识卡片结构偏弱，建议参考 `_knowledge-template.md` 补齐边界、做法、验证等关键段落，但应保持当前项目文风，不要机械改写为模板标题。",
+            source="contract",
         )
     )
 
@@ -318,6 +366,7 @@ def _check_memory_contract(name: str, content: str, findings: List[ArtifactFindi
                 code="missing_validation_routing_hint",
                 severity="medium",
                 message="prime-context 没有提示何时转向 validation-context，首轮路由可能过慢。",
+                source="contract",
             )
         )
 
@@ -327,5 +376,6 @@ def _check_memory_contract(name: str, content: str, findings: List[ArtifactFindi
                 code="missing_db_validation_section",
                 severity="high",
                 message="validation-context 缺少数据库协作验证章节，难以支撑真实查库验证。",
+                source="contract",
             )
         )

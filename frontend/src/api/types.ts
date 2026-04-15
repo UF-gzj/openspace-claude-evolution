@@ -5,6 +5,7 @@ export interface OverviewResponse {
     workflow_count: number;
     frontend_dist_exists: boolean;
   };
+  claude: ClaudeOverview;
   pipeline: PipelineStage[];
   skills: {
     summary: SkillStats;
@@ -202,4 +203,45 @@ export interface WorkflowDetail extends WorkflowSummary {
     screenshots: WorkflowArtifact[];
     video_url: string | null;
   };
+}
+
+export interface ClaudeOverview {
+  enabled: boolean;
+  workspace_root: string;
+  reason?: string;
+  artifact_count: number;
+  artifact_types: Record<string, number>;
+  draft_root: string | null;
+  draft_count: number;
+  draft_buckets: Record<string, number>;
+  lifecycle_statuses: Record<string, number>;
+  recent_drafts: ClaudeDraft[];
+}
+
+export interface ClaudeArtifactItem {
+  artifact_id: string;
+  artifact_type: string;
+  path: string;
+  project_name?: string | null;
+  producers: string[];
+  consumers: string[];
+  notes: string;
+}
+
+export interface ClaudeDraft {
+  name: string;
+  bucket: string;
+  path: string;
+  absolute_path: string;
+  modified_at: string;
+}
+
+export interface ClaudeLifecycleItem {
+  subject_id: string;
+  subject_path: string;
+  status: string;
+  source: string;
+  rationale: string;
+  tags: string[];
+  last_evaluated_at: string;
 }

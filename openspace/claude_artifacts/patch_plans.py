@@ -115,7 +115,7 @@ def _step_for_action(action: ProposalAction, proposal: ArtifactProposal) -> Patc
             target_area=artifact_name,
             instruction="补充别名到正式命令的显式映射说明，避免后续自动识别不稳定。",
             anchor_hint="frontmatter 或正文开头的简介段",
-            sample_text="alias_for: /core:prime",
+            sample_text="alias_for: /prim",
         ),
         "补清下一步承接": PatchStep(
             operation="add_next_step_contract",
@@ -193,6 +193,48 @@ def _step_for_action(action: ProposalAction, proposal: ArtifactProposal) -> Patc
             instruction="为 validation-context 增加数据库协作验证章节，明确连接信息来源与只读边界。",
             anchor_hint="validation-context 的验证方式部分",
             sample_text="## 数据库协作验证\n- 默认只读\n- 先确认 schema 与常查表\n- 验证结果写回验证报告",
+        ),
+        "补项目主链路事实": PatchStep(
+            operation="add_project_routing_facts",
+            target_area=artifact_name,
+            instruction="把项目真实模块/目录入口补进正文，让 prime 相关文件能直接承接代码主链路。",
+            anchor_hint="关键目录 / 常见任务入口 / 当前项目事实",
+            sample_text="## 关键目录\n- <module-a>/\n- <module-b>/\n\n## 常见任务入口\n- 场景 A: <controller/service>\n- 场景 B: <module/path>",
+        ),
+        "修正测试现实": PatchStep(
+            operation="normalize_test_reality",
+            target_area=artifact_name,
+            instruction="把默认测试命令改成条件化表述，只在存在真实测试资产时才作为主验证路径。",
+            anchor_hint="当前测试现状 / 默认验证路径 / 测试命令段落",
+            sample_text="## 当前测试现状\n- 若未扫描到稳定 `src/test/`，默认先编译与烟测\n- 只有真实测试资产存在时，才把测试命令作为主验证手段",
+        ),
+        "补项目事实槽位": PatchStep(
+            operation="add_project_fact_slots",
+            target_area=artifact_name,
+            instruction="在模板里新增项目目录、任务入口等槽位，让生成产物更容易贴近实际代码结构。",
+            anchor_hint="项目事实 / 关键目录 / 常见任务入口",
+            sample_text="## 关键目录\n- <module-or-package>\n\n## 常见任务入口\n- 任务类型: <入口类/目录>",
+        ),
+        "弱化测试占位符假设": PatchStep(
+            operation="weaken_test_placeholder",
+            target_area=artifact_name,
+            instruction="把模板中的测试命令占位从默认存在改为条件化填写，避免初始化阶段编造测试能力。",
+            anchor_hint="测试命令模板 / 默认验证路径",
+            sample_text="- 基础测试命令: 无 / 待确认 / 仅当真实测试资产存在时填写",
+        ),
+        "校正 validate 的测试语气": PatchStep(
+            operation="tone_down_test_command",
+            target_area=artifact_name,
+            instruction="把 validate 命令里的测试建议改成以项目事实为前提的条件化说明。",
+            anchor_hint="验证层级 / 默认验证命令 / 跳过测试说明",
+            sample_text="- 若项目未确认存在稳定测试资产，不要默认执行测试命令；先编译与烟测。",
+        ),
+        "补配置事实入口": PatchStep(
+            operation="add_config_entry_fact",
+            target_area=artifact_name,
+            instruction="把项目真实配置文件入口写进验证上下文，避免验证阶段只看代码不看配置。",
+            anchor_hint="环境前提 / 默认验证路径 / 高风险专项验证",
+            sample_text="- 配置入口优先检查 `bootstrap.yml` / `application.yml` 的真实开关与映射。",
         ),
     }
     return mapping.get(title)

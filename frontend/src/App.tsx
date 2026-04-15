@@ -1,6 +1,7 @@
 import { Navigate, RouterProvider, createBrowserRouter } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
 import DashboardPage from './pages/DashboardPage';
+import ClaudePage from './pages/ClaudePage';
 import SkillsPage from './pages/SkillsPage';
 import SkillDetailPage from './pages/SkillDetailPage';
 import WorkflowsPage from './pages/WorkflowsPage';
@@ -13,6 +14,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'claude', element: <ClaudePage /> },
       { path: 'skills', element: <SkillsPage /> },
       { path: 'skills/:skillId', element: <SkillDetailPage /> },
       { path: 'workflows', element: <WorkflowsPage /> },

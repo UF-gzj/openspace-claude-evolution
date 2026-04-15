@@ -72,6 +72,29 @@ OPENSPACE_DISABLE_CLOUD_COMMUNITY=false
 - `reference_feedback`
 - `reference_template`
 
+### 2.1 `.claude` 审核的两层逻辑
+
+`.claude` 兼容能力采用两层审核，而不是只靠模板检查：
+
+1. 静态契约检查
+- 只负责低风险骨架检查
+- 只检查 frontmatter、最低结构、最低承接关系、知识闭环入口
+- 不直接决定项目个性化内容应该怎么写
+
+2. 项目代码事实审核
+- 在静态检查之后，再结合当前项目目录、模块、配置文件、测试现实等代码事实做二次审核
+- 决定：
+  - 哪些 MD 真有问题
+  - 这些 MD 应该怎么改
+  - 这些 MD 具体改哪里
+  - 草稿是否贴近当前项目本身
+
+设计边界：
+
+- 第一层不能覆盖项目个性化内容
+- 第二层才负责产出项目级建议
+- 如果静态契约建议和代码事实冲突，以代码事实为准
+
 ### 3. 新增 `.claude/evolution-drafts/`
 
 所有 `.claude` 侧自动演化结果统一先落到：
@@ -183,6 +206,52 @@ python -m openspace.mcp_server --transport streamable-http --port 8080
 
 如果本机安装后的 `Scripts` 目录没有加入 `PATH`，优先使用 `python -m openspace.mcp_server`，不要依赖 `openspace-mcp` 命令名。
 
+## 启动 Dashboard 可视化页面
+
+本项目除了 MCP 服务，还内置了一个独立的 dashboard 服务。
+
+启动方式：
+
+```bash
+python -m openspace.dashboard_server --host 127.0.0.1 --port 7788
+```
+
+启动后默认访问：
+
+```text
+http://127.0.0.1:7788
+```
+
+说明：
+
+- dashboard 与 MCP 服务是两条独立入口
+- MCP 负责工具调用与演化执行
+- dashboard 负责查看原生 skill、workflow，以及 `.claude` 兼容能力的可视化状态
+
+如果你希望 dashboard 直接展示某个项目的 `.claude` 数据，启动前请先设置：
+
+```bash
+OPENSPACE_WORKSPACE=D:/Desktop/cfs-report
+```
+
+当前 dashboard 已支持展示：
+
+- 原生 OpenSpace `skills`
+- 原生 `workflows`
+- `.claude` artifact 盘点
+- `.claude/evolution-drafts/` 草稿统计与最近草稿
+- `.claude` lifecycle 状态
+
+如果没有提前构建前端，dashboard 根路径只会返回 API 提示。完整页面需要先执行：
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+构建完成后，`frontend/dist` 会被 dashboard 服务直接托管。
+
 ## 环境变量
 
 最常用的环境变量：
@@ -217,6 +286,91 @@ OPENSPACE_ENABLE_CLAUDE_EVOLUTION=true
 OPENSPACE_ENABLE_CLAUDE_DEPRECATION=true
 OPENSPACE_ENABLE_SKILL_DEPRECATION=true
 ```
+
+## 如何 100% 触发 `.claude` 检测与升级
+
+如果你希望 OpenSpace **明确**对 `.claude` 生成检测结果、修复提案、patch plan 或 patch draft，请按下面的顺序执行。
+
+### 第一步：明确工作区
+
+工作区必须是真实项目根目录，并且该目录下存在 `.claude/`：
+
+```bash
+OPENSPACE_WORKSPACE=D:/Desktop/cfs-report
+```
+
+### 第二步：显式开启 `.claude` 兼容
+
+至少开启：
+
+```bash
+OPENSPACE_ENABLE_CLAUDE_EVOLUTION=true
+```
+
+如果还要启用 `.claude` 生命周期治理，可再加：
+
+```bash
+OPENSPACE_ENABLE_CLAUDE_DEPRECATION=true
+```
+
+### 第三步：启动 MCP 服务
+
+```bash
+python -m openspace.mcp_server
+```
+
+### 第四步：显式调用 `.claude` 工具
+
+只有真正调用下面 4 个工具之一，才会进入 `.claude` 演化链路：
+
+- `analyze_claude_artifacts`
+- `propose_claude_evolution`
+- `plan_claude_patches`
+- `draft_claude_patches`
+
+它们分别对应：
+
+1. `analyze_claude_artifacts`
+- 检查哪些 `.claude` MD 有问题
+- 输出 evaluation 草稿
+
+2. `propose_claude_evolution`
+- 基于检查结果生成修复提案
+- 输出 proposal 草稿
+
+3. `plan_claude_patches`
+- 把提案变成结构化 patch 计划
+- 输出 patch-plan 草稿
+
+4. `draft_claude_patches`
+- 生成可审阅的 Markdown patch 草稿
+- 输出 patch-draft 草稿
+
+### 第五步：确认写草稿
+
+如果调用时 `write_drafts=true`，草稿会写到：
+
+```text
+.claude/evolution-drafts/
+```
+
+如果 `write_drafts=false`，工具只返回分析/提案结果，不写草稿文件。
+
+### 不会自动触发的场景
+
+下面这些场景**不会**自动触发 `.claude` 升级：
+
+- 正常执行 `execute_task`
+- 原生 skill 的 `FIX / DERIVED / CAPTURED`
+- 只是使用项目里的 `/prim /pln /vald` 等 `.claude` 命令
+- 只是打开 dashboard 页面
+- dashboard 读取 `.claude` 数据
+
+也就是说：
+
+- `.claude` 检测/升级是**显式触发**
+- 不是“用了 `.claude` 命令以后自动改 `.claude`”
+- 所有正式文件改动仍需要人工审阅后再吸收
 
 ## 作为 MCP 接入
 

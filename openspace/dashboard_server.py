@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -9,10 +10,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 from flask import Flask, abort, jsonify, send_from_directory, url_for
 
+from openspace.claude_artifacts import ClaudeArtifactManager
 from openspace.recording.action_recorder import analyze_agent_actions, load_agent_actions
 from openspace.recording.utils import load_recording_session
 from openspace.skill_engine import SkillStore
 from openspace.skill_engine.types import SkillRecord
+from openspace.lifecycle import LifecycleManager, LifecycleSubjectType
 
 API_PREFIX = "/api/v1"
 FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
@@ -56,6 +59,8 @@ PIPELINE_STAGES = [
 ]
 
 _STORE: SkillStore | None = None
+_CLAUDE_MANAGER: ClaudeArtifactManager | None = None
+_LIFECYCLE_MANAGER: LifecycleManager | None = None
 
 
 def create_app() -> Flask:
@@ -80,6 +85,7 @@ def create_app() -> Flask:
     @app.route(f"{API_PREFIX}/overview", methods=["GET"])
     def overview() -> Any:
         store = _get_store()
+        claude = _build_claude_overview()
         skills = list(store.load_all(active_only=False).values())
         workflows = [_build_workflow_summary(path) for path in _discover_workflow_dirs()]
         top_skills = _sort_skills(skills, sort_key="score")[:5]
@@ -100,6 +106,7 @@ def create_app() -> Flask:
                     "workflow_count": len(workflows),
                     "frontend_dist_exists": FRONTEND_DIST_DIR.exists(),
                 },
+                "claude": claude,
                 "pipeline": PIPELINE_STAGES,
                 "skills": {
                     "summary": _build_skill_stats(store, skills),
@@ -114,6 +121,83 @@ def create_app() -> Flask:
                 },
             }
         )
+
+    @app.route(f"{API_PREFIX}/claude/overview", methods=["GET"])
+    def claude_overview() -> Any:
+        return jsonify(_build_claude_overview())
+
+    @app.route(f"{API_PREFIX}/claude/artifacts", methods=["GET"])
+    def claude_artifacts() -> Any:
+        manager = _get_claude_manager()
+        if manager is None:
+            return jsonify({"enabled": False, "reason": "No .claude workspace detected.", "items": [], "count": 0})
+
+        lifecycle = _get_lifecycle_manager()
+        artifacts = manager.discover_artifacts()
+        if lifecycle is not None:
+            lifecycle.sync_claude_artifacts(artifacts)
+        items = []
+        for artifact in artifacts:
+            items.append(
+                {
+                    "artifact_id": artifact.artifact_id,
+                    "artifact_type": artifact.artifact_type.value,
+                    "path": str(artifact.path),
+                    "project_name": artifact.project_name,
+                    "producers": artifact.producers,
+                    "consumers": artifact.consumers,
+                    "notes": artifact.notes,
+                }
+            )
+        items.sort(key=lambda item: (item["artifact_type"], item["path"]))
+        return jsonify({"enabled": True, "count": len(items), "items": items})
+
+    @app.route(f"{API_PREFIX}/claude/drafts", methods=["GET"])
+    def claude_drafts() -> Any:
+        manager = _get_claude_manager()
+        if manager is None or manager.workspace is None:
+            return jsonify({"enabled": False, "reason": "No .claude workspace detected.", "items": [], "count": 0})
+
+        draft_root = manager.workspace.evolution_drafts_dir
+        items = _list_claude_drafts(draft_root)
+        return jsonify(
+            {
+                "enabled": True,
+                "draft_root": str(draft_root),
+                "count": len(items),
+                "items": items,
+            }
+        )
+
+    @app.route(f"{API_PREFIX}/claude/lifecycle", methods=["GET"])
+    def claude_lifecycle() -> Any:
+        manager = _get_claude_manager()
+        lifecycle = _get_lifecycle_manager()
+        if manager is None or lifecycle is None:
+            return jsonify({"enabled": False, "reason": "No .claude workspace detected.", "items": [], "count": 0})
+
+        artifacts = manager.discover_artifacts()
+        lifecycle.sync_claude_artifacts(artifacts)
+        artifact_ids = {artifact.artifact_id for artifact in artifacts}
+        items = []
+        for entry in lifecycle.list_entries():
+            if entry.subject_type != LifecycleSubjectType.CLAUDE_ARTIFACT:
+                continue
+            if entry.subject_id not in artifact_ids:
+                continue
+            items.append(
+                {
+                    "subject_id": entry.subject_id,
+                    "subject_path": entry.subject_path,
+                    "status": entry.status.value,
+                    "source": entry.source,
+                    "rationale": entry.rationale,
+                    "tags": entry.tags,
+                    "last_evaluated_at": entry.last_evaluated_at.isoformat(),
+                }
+            )
+        items.sort(key=lambda item: (item["status"], item["subject_path"]))
+        return jsonify({"enabled": True, "count": len(items), "items": items})
 
     @app.route(f"{API_PREFIX}/skills", methods=["GET"])
     def list_skills() -> Any:
@@ -259,6 +343,115 @@ def _get_store() -> SkillStore:
     if _STORE is None:
         _STORE = SkillStore()
     return _STORE
+
+
+def _get_workspace_root() -> Path:
+    configured = os.environ.get("OPENSPACE_WORKSPACE")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return PROJECT_ROOT
+
+
+def _get_claude_manager() -> ClaudeArtifactManager | None:
+    global _CLAUDE_MANAGER
+    if _CLAUDE_MANAGER is None:
+        _CLAUDE_MANAGER = ClaudeArtifactManager(_get_workspace_root())
+    if not _CLAUDE_MANAGER.is_enabled():
+        return None
+    return _CLAUDE_MANAGER
+
+
+def _get_lifecycle_manager() -> LifecycleManager | None:
+    global _LIFECYCLE_MANAGER
+    if _LIFECYCLE_MANAGER is None:
+        claude_manager = _get_claude_manager()
+        if claude_manager is None:
+            return None
+        _LIFECYCLE_MANAGER = LifecycleManager(_get_workspace_root(), claude_manager=claude_manager)
+    return _LIFECYCLE_MANAGER
+
+
+def _build_claude_overview() -> Dict[str, Any]:
+    manager = _get_claude_manager()
+    if manager is None or manager.workspace is None:
+        return {
+            "enabled": False,
+            "workspace_root": str(_get_workspace_root()),
+            "reason": "No .claude workspace detected.",
+            "artifact_count": 0,
+            "artifact_types": {},
+            "draft_root": None,
+            "draft_count": 0,
+            "draft_buckets": {},
+            "lifecycle_statuses": {},
+            "recent_drafts": [],
+        }
+
+    artifacts = manager.discover_artifacts()
+    lifecycle = _get_lifecycle_manager()
+    if lifecycle is not None:
+        lifecycle.sync_claude_artifacts(artifacts)
+    artifact_types: Dict[str, int] = {}
+    for artifact in artifacts:
+        key = artifact.artifact_type.value
+        artifact_types[key] = artifact_types.get(key, 0) + 1
+
+    draft_root = manager.workspace.evolution_drafts_dir
+    draft_items = _list_claude_drafts(draft_root)
+    draft_buckets: Dict[str, int] = {}
+    for item in draft_items:
+        bucket = item["bucket"]
+        draft_buckets[bucket] = draft_buckets.get(bucket, 0) + 1
+
+    lifecycle_statuses: Dict[str, int] = {}
+    artifact_ids = {artifact.artifact_id for artifact in artifacts}
+    if lifecycle is not None:
+        for entry in lifecycle.list_entries():
+            if entry.subject_type != LifecycleSubjectType.CLAUDE_ARTIFACT:
+                continue
+            if entry.subject_id not in artifact_ids:
+                continue
+            key = entry.status.value
+            lifecycle_statuses[key] = lifecycle_statuses.get(key, 0) + 1
+
+    recent_drafts = sorted(
+        draft_items,
+        key=lambda item: item["modified_at"],
+        reverse=True,
+    )[:8]
+
+    return {
+        "enabled": True,
+        "workspace_root": str(manager.workspace.workspace_root),
+        "artifact_count": len(artifacts),
+        "artifact_types": artifact_types,
+        "draft_root": str(draft_root),
+        "draft_count": len(draft_items),
+        "draft_buckets": draft_buckets,
+        "lifecycle_statuses": lifecycle_statuses,
+        "recent_drafts": recent_drafts,
+    }
+
+
+def _list_claude_drafts(draft_root: Path) -> List[Dict[str, Any]]:
+    if not draft_root.exists():
+        return []
+    items: List[Dict[str, Any]] = []
+    for path in draft_root.rglob("*.md"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(draft_root).as_posix()
+        bucket = relative.split("/", 1)[0] if "/" in relative else "root"
+        items.append(
+            {
+                "name": path.name,
+                "bucket": bucket,
+                "path": relative,
+                "absolute_path": str(path),
+                "modified_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+            }
+        )
+    return items
 
 
 def _bool_arg(name: str, default: bool) -> bool:

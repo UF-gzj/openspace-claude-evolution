@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "claude": ".claude",
     "skills": "Skills",
     "workflows": "Workflows"
   },
@@ -64,6 +65,36 @@
     "recentSessions": "Recent sessions",
     "noWorkflowSessions": "No workflow sessions",
     "noWorkflowDesc": "Recordings will appear after a task is executed with recording enabled."
+  },
+  "claude": {
+    "title": ".claude evolution panel",
+    "workspace": "Workspace: {{path}}",
+    "loading": "Loading .claude panel…",
+    "failedToLoad": "Failed to load .claude panel",
+    "unavailable": ".claude panel unavailable",
+    "notDetected": "No .claude workspace detected",
+    "notDetectedDesc": "Set OPENSPACE_WORKSPACE to a project workspace that contains a .claude directory.",
+    "totalArtifacts": "Total artifacts",
+    "detectedInWorkspace": "Detected from the current .claude workspace",
+    "totalDrafts": "Total drafts",
+    "artifactTypes": "Artifact types",
+    "distinctTypes": "Distinct recognized types",
+    "lifecycleSubjects": "Lifecycle subjects",
+    "lifecycleHint": "Only .claude lifecycle entries are counted here",
+    "inventory": "Inventory",
+    "artifactTypeBreakdown": "Artifact type breakdown",
+    "noArtifacts": "No .claude artifacts yet",
+    "noArtifactsDesc": "The current workspace does not expose any recognizable .claude artifacts yet.",
+    "governance": "Governance",
+    "lifecycleStatusBreakdown": "Lifecycle status breakdown",
+    "noLifecycle": "No lifecycle entries yet",
+    "noLifecycleDesc": "Lifecycle governance data will appear here after .claude lifecycle sync runs.",
+    "drafts": "Drafts",
+    "recentDrafts": "Recent drafts",
+    "noDrafts": "No drafts yet",
+    "noDraftsDesc": "Drafts from analyze / propose / plan / draft will appear here once generated.",
+    "artifacts": "Artifacts",
+    "sampleArtifacts": "Artifact samples"
   },
   "skills": {
     "title": "Skill classes",
