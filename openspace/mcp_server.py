@@ -775,7 +775,9 @@ async def analyze_claude_artifacts(
                             {
                                 "code": finding.code,
                                 "severity": finding.severity,
+                                "source": finding.source,
                                 "message": finding.message,
+                                "evidence": finding.evidence,
                             }
                             for finding in evaluation.findings
                         ],

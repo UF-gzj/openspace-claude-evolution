@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "仪表盘",
+    "claude": ".claude",
     "skills": "Skills",
     "workflows": "工作流"
   },
@@ -64,6 +65,36 @@
     "recentSessions": "近期会话",
     "noWorkflowSessions": "暂无工作流会话",
     "noWorkflowDesc": "启用录制后执行任务，录制数据将在此显示。"
+  },
+  "claude": {
+    "title": ".claude 演化面板",
+    "workspace": "工作区：{{path}}",
+    "loading": "正在加载 .claude 面板…",
+    "failedToLoad": "加载 .claude 面板失败",
+    "unavailable": ".claude 面板不可用",
+    "notDetected": "未检测到 .claude 工作区",
+    "notDetectedDesc": "请设置 OPENSPACE_WORKSPACE 指向包含 .claude 的项目工作区。",
+    "totalArtifacts": "Artifact 总数",
+    "detectedInWorkspace": "已识别当前工作区中的 .claude 文件",
+    "totalDrafts": "草稿总数",
+    "artifactTypes": "Artifact 类型",
+    "distinctTypes": "当前已识别的类型种类数",
+    "lifecycleSubjects": "生命周期对象",
+    "lifecycleHint": "仅统计 .claude Artifact 生命周期条目",
+    "inventory": "盘点",
+    "artifactTypeBreakdown": "Artifact 类型分布",
+    "noArtifacts": "暂无 .claude Artifact",
+    "noArtifactsDesc": "当前工作区还没有可识别的 .claude artifact。",
+    "governance": "治理",
+    "lifecycleStatusBreakdown": "生命周期状态分布",
+    "noLifecycle": "暂无生命周期条目",
+    "noLifecycleDesc": "启用 .claude 生命周期治理后，这里会显示状态分布。",
+    "drafts": "草稿",
+    "recentDrafts": "最近草稿",
+    "noDrafts": "暂无草稿",
+    "noDraftsDesc": "运行 analyze / propose / plan / draft 后，这里会显示 evolution-drafts 产物。",
+    "artifacts": "样本",
+    "sampleArtifacts": "Artifact 样本"
   },
   "skills": {
     "title": "Skill 类别",

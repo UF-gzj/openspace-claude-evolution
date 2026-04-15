@@ -185,5 +185,41 @@ def _proposal_for_finding(
             target_area=artifact_name,
             suggested_change="在 validation-context 中增加数据库协作验证章节，明确连接信息来源、只读边界和适用场景。",
         ),
+        "missing_project_module_routing": ProposalAction(
+            title="补项目主链路事实",
+            rationale=finding.message,
+            target_area=artifact_name,
+            suggested_change="根据当前项目真实模块/目录，把主链路入口写进 prime-context，而不是只保留抽象描述。",
+        ),
+        "test_reality_mismatch": ProposalAction(
+            title="修正测试现实",
+            rationale=finding.message,
+            target_area=artifact_name,
+            suggested_change="把 validation-context 改成“先编译/烟测，只有真实测试资产存在时再跑测试命令”，避免默认承诺不存在的测试能力。",
+        ),
+        "template_missing_project_fact_slots": ProposalAction(
+            title="补项目事实槽位",
+            rationale=finding.message,
+            target_area=artifact_name,
+            suggested_change="在 prime-context 模板里补“关键目录 / 常见任务入口”等槽位，让生成后的正式文件能承接项目主链路。",
+        ),
+        "template_test_placeholder_too_strong": ProposalAction(
+            title="弱化测试占位符假设",
+            rationale=finding.message,
+            target_area=artifact_name,
+            suggested_change="把 validation-context 模板里的测试命令占位改成“无/待确认/仅当真实测试资产存在时填写”，降低生成假测试命令的风险。",
+        ),
+        "validate_command_test_reality_mismatch": ProposalAction(
+            title="校正 validate 的测试语气",
+            rationale=finding.message,
+            target_area=artifact_name,
+            suggested_change="把 validate 命令里的测试建议改成条件化表述，明确是否存在真实测试资产必须先由项目事实确认。",
+        ),
+        "missing_bootstrap_config_fact": ProposalAction(
+            title="补配置事实入口",
+            rationale=finding.message,
+            target_area=artifact_name,
+            suggested_change="在 validation-context 中显式写出 `bootstrap.yml` 或等价配置入口，避免验证时漏掉真实配置链路。",
+        ),
     }
     return mapping.get(finding.code)
