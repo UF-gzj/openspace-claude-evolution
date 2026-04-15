@@ -43,6 +43,64 @@ OpenSpace Claude Evolution 是由**关镇江**基于香港大学 Data Intelligen
 - 云社区默认禁用
 - 自动演化结果先出草稿，不直接改正式规则
 
+## 演化原理
+
+### 原生 skill 如何优化或生成
+
+OpenSpace 原生的 `SKILL.md` 演化，默认不是从 skill 市场直接拉取一份来替换本地 skill。
+
+它的主路径是：
+
+1. 先执行真实任务
+2. 记录执行过程、skill 命中情况、fallback、完成结果
+3. 由执行后分析器判断是否存在可演化机会
+4. 再由大模型结合当前 skill 内容、最近执行分析、工具问题和指标数据，生成：
+   - `FIX`
+   - `DERIVED`
+   - `CAPTURED`
+5. 把结果写回本地 skill 目录，并保留 lineage / version / store 记录
+
+也就是说：
+
+- **skill 优化/生成的主路径，是依赖大模型在本地证据基础上写出新版本**
+- **不是默认从 skill 市场直接拉取来替换**
+
+skill 市场的作用更偏：
+
+- `search_skills`
+  - 搜索可安装 skill
+- `download_skill`
+  - 人工或显式流程拉取外部 skill
+
+它属于“外部补充来源”，不是本地 skill 自动演化的主机制。
+
+### `.claude` 如何优化
+
+`.claude` 兼容能力和原生 skill 不同，它现在走的是 **显式触发 + 草稿优先** 的治理式演化。
+
+主路径是：
+
+1. 显式调用：
+   - `analyze_claude_artifacts`
+   - `propose_claude_evolution`
+   - `plan_claude_patches`
+   - `draft_claude_patches`
+2. 先做静态契约检查
+3. 再结合项目真实代码和配置事实做二次审核
+4. 只生成：
+   - evaluation
+   - proposal
+   - patch plan
+   - patch draft
+5. 草稿统一写入 `.claude/evolution-drafts/`
+6. 不直接覆盖正式 `.claude` 文件
+
+也就是说：
+
+- **`.claude` 优化不是自动改正式规则**
+- **而是基于工作区事实生成可审阅草稿**
+- **吸收是否生效，仍由团队流程或人工决定**
+
 ## 与原始 OpenSpace 的主要区别
 
 ### 1. 云社区默认禁用
