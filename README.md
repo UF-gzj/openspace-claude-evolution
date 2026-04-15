@@ -404,6 +404,30 @@ python -m openspace.mcp_server
 - 生成可审阅的 Markdown patch 草稿
 - 输出 patch-draft 草稿
 
+### 一句话顺序触发
+
+如果你希望按完整顺序一次走完 `.claude` 的四层链路，最直接的做法是按下面这一句依次执行：
+
+```text
+analyze_claude_artifacts(write_drafts=true) -> propose_claude_evolution(write_drafts=true) -> plan_claude_patches(write_drafts=true) -> draft_claude_patches(write_drafts=true)
+```
+
+推荐使用场景：
+
+- 你刚完成一轮 `.claude` 体系审查
+- 你已经确认要让 OpenSpace 为当前工作区生成完整草稿
+- 你希望一次性拿到：
+  - evaluation
+  - proposal
+  - patch plan
+  - patch draft
+
+不推荐使用场景：
+
+- 你只想先看有没有问题
+- 你还没确定是否需要生成草稿
+- 你只想审一个单独层级（例如只看 proposal）
+
 ### 第五步：确认写草稿
 
 如果调用时 `write_drafts=true`，草稿会写到：
@@ -521,13 +545,15 @@ OPENSPACE_ENABLE_CLAUDE_EVOLUTION=true
 
 用于记录 `.claude` artifact 与原生 skill 的生命周期治理状态，但不会直接覆盖正式 `.claude` 文件。
 
-如需显式生成 `.claude` 评估草稿，可通过 MCP 调用：
+如需真正生成 `.claude` 草稿，直接回到前面的 [如何 100% 触发 `.claude` 检测与升级](#如何-100-触发-claude-检测与升级) 执行即可。
+
+这里记住一条就够了：
 
 ```text
-analyze_claude_artifacts(write_drafts=true)
+analyze_claude_artifacts(write_drafts=true) -> propose_claude_evolution(write_drafts=true) -> plan_claude_patches(write_drafts=true) -> draft_claude_patches(write_drafts=true)
 ```
 
-草稿会写入：
+输出仍然统一写入：
 
 ```text
 .claude/evolution-drafts/commands/
@@ -536,44 +562,7 @@ analyze_claude_artifacts(write_drafts=true)
 .claude/evolution-drafts/memory/
 ```
 
-如需在评估基础上进一步生成可审阅的修复提案，可调用：
-
-```text
-propose_claude_evolution(write_drafts=true)
-```
-
-它会基于契约检查结果生成：
-
-- 该补什么 frontmatter
-- 该补哪些关键契约词
-- 哪些命令要补上下游承接
-- 哪些模板要补数据库协作验证或 feedback 闭环
-
-这些提案同样只会落草稿，不会直接覆盖正式 `.claude` 文件。
-
-如需继续把提案收敛成结构化 patch plan，可调用：
-
-```text
-plan_claude_patches(write_drafts=true)
-```
-
-它生成的是“怎么改、改哪里、锚点大概在哪、建议样例是什么”，适合后续继续人工吸收，或作为更严格自动化的上游输入。
-
-如需继续把 patch plan 落成基于当前文件内容的 patch draft，可调用：
-
-```text
-draft_claude_patches(write_drafts=true)
-```
-
-这一步会同时给出：
-
-- 当前文件相关片段
-- 建议插入或改写后的草稿片段
-- 锚点建议
-
-它适合人工 review 之后再决定是否吸收进正式 `.claude` 文件。
-
-6. 后续 `.claude` 侧演化结果都必须先落草稿，再由现有流程吸收
+后续 `.claude` 侧结果都必须先看草稿，再由现有流程吸收。
 
 ## `.claude` 兼容能力的完整使用方式
 
@@ -583,45 +572,11 @@ draft_claude_patches(write_drafts=true)
 - `cfs-finance`
 - `cfs-pay-rec`
 
-### 1. 项目准备
+完整前置条件、开关和四个工具的分层说明，已经在前面的 [如何 100% 触发 `.claude` 检测与升级](#如何-100-触发-claude-检测与升级) 里写全了。这里不再重复解释同一套步骤，只保留真正补充使用时会关心的内容。
 
-你的项目根目录下需要真实存在：
+### 1. 启用后会新增什么
 
-```text
-.claude/
-```
-
-并且至少建议有这些正式文件：
-
-```text
-.claude/CLAUDE.md
-.claude/PRD.md
-.claude/prime-context.md
-.claude/validation-context.md
-.claude/reference/
-.claude/templates/
-.claude/commands/
-```
-
-### 2. 打开 `.claude` 兼容能力
-
-至少打开：
-
-```bash
-OPENSPACE_WORKSPACE=/path/to/project
-OPENSPACE_ENABLE_CLAUDE_EVOLUTION=true
-```
-
-如果还要启用生命周期治理：
-
-```bash
-OPENSPACE_ENABLE_CLAUDE_DEPRECATION=true
-OPENSPACE_ENABLE_SKILL_DEPRECATION=true
-```
-
-### 3. 启动后会发生什么
-
-OpenSpace 检测到 `.claude` 后，会自动准备：
+当工作区下存在 `.claude/`，并且显式开启 `.claude` 兼容后，OpenSpace 会准备：
 
 ```text
 .claude/evolution-drafts/
@@ -635,80 +590,7 @@ OpenSpace 检测到 `.claude` 后，会自动准备：
 - `.openspace/lifecycle/lifecycle.json`
   - 放原生 skill 和 `.claude` artifact 的生命周期状态
 
-### 4. `.claude` 常用 MCP 工具
-
-#### `analyze_claude_artifacts`
-
-作用：
-
-- 检查 `.claude` 当前正式文件有没有契约漂移
-- 只做检查，不直接改文件
-
-示例：
-
-```text
-analyze_claude_artifacts(write_drafts=true)
-```
-
-输出：
-
-- evaluation 结果
-- 如开启 `write_drafts=true`，写入 `evolution-drafts/*-evaluation.draft.md`
-
-#### `propose_claude_evolution`
-
-作用：
-
-- 基于 evaluation 结果给出修复提案
-
-示例：
-
-```text
-propose_claude_evolution(write_drafts=true)
-```
-
-输出：
-
-- proposal 结果
-- 写入 `*-proposal.draft.md`
-
-#### `plan_claude_patches`
-
-作用：
-
-- 把 proposal 收敛成结构化 patch plan
-
-示例：
-
-```text
-plan_claude_patches(write_drafts=true)
-```
-
-输出：
-
-- patch step
-- 写入 `*-patch-plan.draft.md`
-
-#### `draft_claude_patches`
-
-作用：
-
-- 结合当前正式文件内容，生成更接近实际 Markdown 修改的草稿
-
-示例：
-
-```text
-draft_claude_patches(write_drafts=true)
-```
-
-输出：
-
-- 当前片段
-- 建议片段
-- 锚点建议
-- 写入 `*-patch-draft.draft.md`
-
-### 5. 草稿目录怎么看
+### 2. 草稿目录怎么看
 
 默认目录结构：
 
@@ -734,7 +616,7 @@ draft_claude_patches(write_drafts=true)
 - `reports/`
   - 生命周期报告、退役建议、汇总类报告
 
-### 6. 推荐吸收方式
+### 3. 推荐吸收方式
 
 `.claude` 侧草稿不是自动正式生效的，推荐还是回到你原本的团队流程中吸收：
 
@@ -746,7 +628,7 @@ draft_claude_patches(write_drafts=true)
   - `/cmit`
   - 或人工直接合并
 
-### 7. 适合用来演化什么
+### 4. 适合用来演化什么
 
 当前更适合演化的是：
 
@@ -759,7 +641,7 @@ draft_claude_patches(write_drafts=true)
 - 正式记忆
   - `CLAUDE.md / PRD.md / prime-context.md / validation-context.md`
 
-### 8. 不该怎么用
+### 5. 不该怎么用
 
 不要把它当作“自动重写 `.claude` 正式文件”的工具。
 
