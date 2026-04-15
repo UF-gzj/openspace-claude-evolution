@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import lru_cache
-from pathlib import Path
 from typing import List, Optional
 import re
 
@@ -47,7 +45,7 @@ def evaluate_artifact(artifact: ClaudeArtifact) -> ArtifactEvaluation:
     content = artifact.path.read_text(encoding="utf-8")
     contract = infer_contract(artifact)
     findings: List[ArtifactFinding] = []
-    project_facts = _get_project_facts(str(artifact.workspace_root))
+    project_facts = collect_project_facts(artifact.workspace_root)
 
     if _expects_frontmatter(artifact) and not content.startswith("---"):
         findings.append(
@@ -163,11 +161,6 @@ def _render_finding(finding: ArtifactFinding) -> str:
         evidence = "; ".join(finding.evidence[:4])
         line += f" 证据: {evidence}"
     return line
-
-
-@lru_cache(maxsize=16)
-def _get_project_facts(workspace_root: str):
-    return collect_project_facts(Path(workspace_root))
 
 
 def _expects_frontmatter(artifact: ClaudeArtifact) -> bool:

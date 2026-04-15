@@ -99,7 +99,7 @@ def review_artifact_with_project_facts(
 
 def _review_prime_context(content: str, facts: ProjectFacts) -> List[CodeFactFinding]:
     findings: List[CodeFactFinding] = []
-    evidence = facts.module_dirs[:5] or facts.top_level_dirs[:5]
+    evidence = _build_routing_evidence(facts)
     if not evidence:
         return findings
 
@@ -144,7 +144,7 @@ def _review_validation_context(content: str, facts: ProjectFacts) -> List[CodeFa
 def _review_prime_context_template(content: str, facts: ProjectFacts) -> List[CodeFactFinding]:
     findings: List[CodeFactFinding] = []
     if "关键目录" not in content and "常见任务入口" not in content:
-        evidence = facts.module_dirs[:5] or facts.top_level_dirs[:5]
+        evidence = _build_routing_evidence(facts)
         if evidence:
             findings.append(
                 CodeFactFinding(
@@ -159,7 +159,14 @@ def _review_prime_context_template(content: str, facts: ProjectFacts) -> List[Co
 
 def _review_validation_context_template(content: str, facts: ProjectFacts) -> List[CodeFactFinding]:
     findings: List[CodeFactFinding] = []
-    if not facts.has_src_test and "<project-default-test-command>" in content and "无" not in content and "待确认" not in content:
+    if (
+        not facts.has_src_test
+        and "<project-default-test-command>" in content
+        and _placeholder_lacks_local_guard(
+            content,
+            "<project-default-test-command>",
+        )
+    ):
         findings.append(
             CodeFactFinding(
                 code="template_test_placeholder_too_strong",
@@ -215,9 +222,48 @@ def _contains_any_token(content: str, tokens: List[str]) -> bool:
     return any(token.lower() in lowered for token in tokens if token)
 
 
+def _build_routing_evidence(facts: ProjectFacts) -> List[str]:
+    ordered = facts.module_dirs[:5] + facts.top_level_dirs[:5] + facts.java_package_prefixes[:5]
+    unique: List[str] = []
+    seen = set()
+    for item in ordered:
+        normalized = item.lower()
+        if item and normalized not in seen:
+            unique.append(item)
+            seen.add(normalized)
+    return unique
+
+
+def _placeholder_lacks_local_guard(content: str, placeholder: str) -> bool:
+    guard_terms = [
+        "真实测试资产",
+        "仅当",
+        "如存在",
+        "若存在",
+        "待确认",
+        "无",
+        "不要默认",
+        "未扫描到",
+    ]
+    matches = list(re.finditer(re.escape(placeholder), content))
+    if not matches:
+        return False
+
+    for match in matches:
+        start = max(0, match.start() - 120)
+        end = min(len(content), match.end() + 120)
+        local_window = content[start:end]
+        if any(term in local_window for term in guard_terms):
+            return False
+    return True
+
+
 def _looks_like_unconditional_test_command(content: str) -> bool:
     lowered = content.lower()
     if "<project-default-test-command>" in content or "mvn test" in lowered or "pytest" in lowered:
+        if "<project-default-test-command>" in content:
+            return _placeholder_lacks_local_guard(content, "<project-default-test-command>")
+
         guard_terms = [
             "真实测试资产",
             "仅当",
