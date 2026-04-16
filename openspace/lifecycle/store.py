@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from json import JSONDecodeError
 from pathlib import Path
+import tempfile
 from typing import Dict, List, Optional
 
 from .types import LifecycleEntry
@@ -27,7 +29,20 @@ class LifecycleStore:
     def load_all(self) -> Dict[str, LifecycleEntry]:
         if not self._path.is_file():
             return {}
-        data = json.loads(self._path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+        except JSONDecodeError:
+            # Preserve the broken snapshot for inspection, but do not let a
+            # transient partial write take down dashboard reads.
+            broken_path = self._path.with_name(f"{self._path.stem}.broken.json")
+            try:
+                if not broken_path.exists():
+                    self._path.replace(broken_path)
+                else:
+                    self._path.unlink(missing_ok=True)
+            except OSError:
+                return {}
+            return {}
         return {
             key: LifecycleEntry.from_dict(value)
             for key, value in data.get("entries", {}).items()
@@ -40,10 +55,18 @@ class LifecycleStore:
                 for key, value in sorted(entries.items(), key=lambda item: item[0])
             }
         }
-        self._path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        content = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w",
             encoding="utf-8",
-        )
+            dir=self._root,
+            prefix=f"{self._path.stem}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(content)
+            temp_path = Path(handle.name)
+        temp_path.replace(self._path)
 
     def get(self, subject_id: str) -> Optional[LifecycleEntry]:
         return self.load_all().get(subject_id)
